@@ -242,9 +242,22 @@ const eliminarNotificacion = async (req, res) => {
 
 const obtenerNotificacionesPorUsuario = async (req, res) => {
     const { id_cuenta } = req.params;
+    const { id_Cuenta, rol } = req.user || {};
     const con = await db.getConnection();
 
     try {
+        const targetCuentaId = Number(id_cuenta);
+        const requesterCuentaId = Number(id_Cuenta);
+        const privilegedRoles = new Set(['Coordinador', 'Director General']);
+
+        // Evita IDOR: solo dueño o roles privilegiados pueden consultar otra cuenta.
+        if (targetCuentaId !== requesterCuentaId && !privilegedRoles.has(rol)) {
+            return res.status(403).json({
+                ok: false,
+                message: "No autorizado para consultar notificaciones de esta cuenta",
+            });
+        }
+
         let { page = 1, limit = 10, entregado } = req.query;
         page = parseInt(page);
         limit = parseInt(limit);

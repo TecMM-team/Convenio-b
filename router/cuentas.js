@@ -3,7 +3,7 @@ const { createCuenta, restorePass, createCuentasAdmin, obtenerCuentasOne, actual
 const { authMiddleware, ROLES } = require("../middlewares/authMiddleware");
 const routerCuentas = Router();
 
-routerCuentas.patch('/',createCuenta);
+routerCuentas.patch('/', authMiddleware([ROLES.Coordinador, ROLES.Director_General]), createCuenta);
 routerCuentas.patch('/restore',restorePass);
 routerCuentas.post('/admin', authMiddleware(), createCuentasAdmin);
 routerCuentas.get('/convenios', authMiddleware([ROLES.Coordinador]), obtenerCuentas);

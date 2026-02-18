@@ -3,11 +3,95 @@ const fs = require("fs");
 const handlebars = require('handlebars');
 const puppeteer = require('puppeteer');
 
+const toMysqlDate = (value) => {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+    }
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        const rawDate = trimmed.includes("T") ? trimmed.split("T")[0] : trimmed;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) return rawDate;
+        const parsed = new Date(trimmed);
+        if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+    }
+    return null;
+};
+
+const getConvenioTemplateData = async (con, numero_convenio) => {
+    const [convenioData] = await con.query(
+        `SELECT 
+            C.*,
+            O.*,
+            UA.nombre AS nombre_unidad,
+            UA.representante AS nombre,
+            UA.domicilio AS domicilio_unidad,
+            C.id_Convenio as convenio_id,
+            C.estado as convenio_estado,
+            O.tipo as tipo_organizacion,
+            O.nombre_Legal AS nombre_empresa,
+            O.nombre_Legal AS nombre_dependencia,
+            O.nombre_Titular AS nombre_jefe,
+            O.nombre_Titular AS persona,
+            O.puesto_Titular AS puesto,
+            O.nombre_Comercial AS nombre_comercial,
+            O.numero_Escritura,
+            O.fecha_Nombramiento AS fecha_nombramiento,
+            O.nombre_Notario AS nombre_notario,
+            O.numero_Notaria AS numero_notaria,
+            O.actividades,
+            CONCAT(O.domicilio_Calle, ', ', O.domicilio_CP) AS domicilio,
+            O.contacto_Telefono AS telefono,
+            O.contacto_Email AS mail,
+            (SELECT nombre FROM Municipios WHERE id_municipio = O.notaria_Municipio) AS municipio_notaria
+        FROM Convenios C
+        LEFT JOIN Organizaciones O ON C.id_Organizacion = O.id_Organizacion
+        LEFT JOIN Unidades_Academicas UA ON C.id_Unidad_Academica = UA.id_Unidad_Academica
+        WHERE C.numero_Convenio = ?`,
+        [numero_convenio]
+    );
+
+    if (convenioData.length < 1) return null;
+
+    const data = convenioData[0];
+    data.nombre_comercial = data.nombre_comercial || data.nombre_empresa;
+
+    if (data.fecha_nombramiento) {
+        const fecha = new Date(data.fecha_nombramiento);
+        const dia = fecha.getDate();
+        const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        const mes = meses[fecha.getMonth()];
+        const anio = fecha.getFullYear();
+        data.fecha_nombramiento = `${dia} del mes de ${mes} del año ${anio}`;
+    }
+
+    return data;
+};
+
+const renderConvenioHtml = (templatePath, data) => {
+    const source = fs.readFileSync(templatePath).toString();
+    const sinSaltosDeLinea = source.replace(/\n/g, '');
+    const template = handlebars.compile(sinSaltosDeLinea);
+    return template(data);
+};
+
 const draft = async (req, res) => {
     const con = await db.getConnection();
     const {id_Creador_Cuenta, id_Unidad_Academica, tipo_Convenio, fecha_Inicio, fecha_Fin, id_Organizacion} = req.body;
 
     try {
+        const fechaInicioMysql = toMysqlDate(fecha_Inicio);
+        const fechaFinMysql = toMysqlDate(fecha_Fin);
+
+        if (!fechaInicioMysql) {
+            return res.status(400).json({ ok: false, msg: "fecha_Inicio inválida. Usa formato YYYY-MM-DD" });
+        }
+
+        if (fecha_Fin !== null && fecha_Fin !== undefined && !fechaFinMysql) {
+            return res.status(400).json({ ok: false, msg: "fecha_Fin inválida. Usa formato YYYY-MM-DD o null" });
+        }
+
         //validacion de unidad academica
         const [existingUnidad] = await con.query(
             "SELECT * FROM Unidades_Academicas WHERE id_Unidad_Academica = ?",
@@ -75,7 +159,7 @@ const draft = async (req, res) => {
 
         const [result] = await con.query(
             "INSERT INTO Convenios(numero_Convenio, id_Unidad_Academica, id_Creador_Cuenta, id_Organizacion, tipo_Convenio, estado, fecha_Inicio, fecha_Fin, ultimo_paso) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [numero_convenio, id_Unidad_Academica, id_Creador_Cuenta, id_Organizacion, tipo_Convenio, "Incompleto", fecha_Inicio, fecha_Fin, 2]
+            [numero_convenio, id_Unidad_Academica, id_Creador_Cuenta, id_Organizacion, tipo_Convenio, "Incompleto", fechaInicioMysql, fechaFinMysql, 2]
         );
 
         return res.status(201).json({ 
@@ -302,61 +386,11 @@ const convenioEmpresas = async (req, res) => {
     const { numero_convenio } = req.body;
 
     try {
-        // Consultar datos del convenio con toda la información necesaria
-        const [convenioData] = await con.query(
-            `SELECT 
-                C.*,
-                O.*,
-                UA.nombre AS nombre_unidad,
-                UA.representante AS nombre,
-                UA.domicilio AS domicilio_unidad,
-                C.id_Convenio as convenio_id,
-                C.estado as convenio_estado,
-                O.tipo as tipo_organizacion,
-                O.nombre_Legal AS nombre_empresa,
-                O.nombre_Titular AS nombre_jefe,
-                O.puesto_Titular AS puesto,
-                O.nombre_Comercial AS nombre_comercial,
-                O.numero_Escritura,
-                O.fecha_Nombramiento AS fecha_nombramiento,
-                O.nombre_Notario AS nombre_notario,
-                O.numero_Notaria AS numero_notaria,
-                O.actividades,
-                CONCAT(O.domicilio_Calle, ', ', O.domicilio_CP) AS domicilio,
-                O.contacto_Telefono AS telefono,
-                O.contacto_Email AS mail,
-                (SELECT nombre FROM Municipios WHERE id_municipio = O.notaria_Municipio) AS municipio_notaria
-            FROM Convenios C
-            LEFT JOIN Organizaciones O ON C.id_Organizacion = O.id_Organizacion
-            LEFT JOIN Unidades_Academicas UA ON C.id_Unidad_Academica = UA.id_Unidad_Academica
-            WHERE C.numero_Convenio = ?`,
-            [numero_convenio]
-        );
-
-        if (convenioData.length < 1) {
+        const data = await getConvenioTemplateData(con, numero_convenio);
+        if (!data) {
             return res.status(404).json({ ok: false, msg: "Convenio no encontrado" });
         }
-
-        const data = convenioData[0];
-
-        // Formatear fecha si existe
-        if (data.fecha_nombramiento) {
-            const fecha = new Date(data.fecha_nombramiento);
-            const dia = fecha.getDate();
-            const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
-                          'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-            const mes = meses[fecha.getMonth()];
-            const anio = fecha.getFullYear();
-            data.fecha_nombramiento = `${dia} del mes de ${mes} del año ${anio}`;
-        }
-
-        // Cargar y compilar la plantilla
-        const source = fs.readFileSync('./formatos/empresa.html').toString();
-        const sinSaltosDeLinea = source.replace(/\n/g, '');
-        
-        const template = handlebars.compile(sinSaltosDeLinea);
-        const htmlToSend = template(data);
-
+        const htmlToSend = renderConvenioHtml('./formatos/empresa.html', data);
         res.status(200).json({ok: true, html: htmlToSend});
     } catch (err) {
         console.error(err);
@@ -367,23 +401,39 @@ const convenioEmpresas = async (req, res) => {
 }
 
 const convenioDependencia = async (req, res) => {
-    const source = fs.readFileSync('./formatos/dependencia.html').toString();
-
-    const sinSaltosDeLinea = source.replace(/\n/g, '');
-    const template = handlebars.compile(sinSaltosDeLinea);
-    const htmlToSend = template(req.body);
-    
-    res.status(200).json({ok: true, html: htmlToSend});
+    const con = await db.getConnection();
+    const { numero_convenio } = req.body;
+    try {
+        const data = await getConvenioTemplateData(con, numero_convenio);
+        if (!data) {
+            return res.status(404).json({ ok: false, msg: "Convenio no encontrado" });
+        }
+        const htmlToSend = renderConvenioHtml('./formatos/dependencia.html', data);
+        return res.status(200).json({ok: true, html: htmlToSend});
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ ok: false, msg: 'Error al generar el convenio' });
+    } finally {
+        con.release();
+    }
 }
 
 const convenioPersona = async (req, res) => {
-    const source = fs.readFileSync('./formatos/persona.html').toString();
-    
-    const sinSaltosDeLinea = source.replace(/\n/g, '');
-    const template = handlebars.compile(sinSaltosDeLinea);
-    const htmlToSend = template(req.body);
-
-    res.status(200).json({ok: true, html: htmlToSend});
+    const con = await db.getConnection();
+    const { numero_convenio } = req.body;
+    try {
+        const data = await getConvenioTemplateData(con, numero_convenio);
+        if (!data) {
+            return res.status(404).json({ ok: false, msg: "Convenio no encontrado" });
+        }
+        const htmlToSend = renderConvenioHtml('./formatos/persona.html', data);
+        return res.status(200).json({ok: true, html: htmlToSend});
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ ok: false, msg: 'Error al generar el convenio' });
+    } finally {
+        con.release();
+    }
 }
 
 const generarPdf = async (req, res) => {
