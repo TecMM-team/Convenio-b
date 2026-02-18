@@ -10,6 +10,11 @@ const routerOrganizacion = Router();
 
 routerOrganizacion.post('/', authMiddleware([ROLES.Gestor, ROLES.Organizacion, ROLES.Revisor, ROLES.Director_Unidad, ROLES.Coordinador, ROLES.Director_General]), registrarOrganizacion);
 routerOrganizacion.patch('/:id_Organizacion', authMiddleware([ROLES.Gestor, ROLES.Organizacion, ROLES.Revisor, ROLES.Director_Unidad, ROLES.Coordinador, ROLES.Director_General]), actualizarOrganizacion);
-routerOrganizacion.post('/archivo', upload.single('document'), procesarArchivo);
+routerOrganizacion.post(
+  '/archivo',
+  authMiddleware([ROLES.Gestor, ROLES.Organizacion, ROLES.Revisor, ROLES.Director_Unidad, ROLES.Coordinador, ROLES.Director_General]),
+  upload.single('document'),
+  procesarArchivo
+);
 
 module.exports = (app) => app.use('/organizacion', routerOrganizacion);

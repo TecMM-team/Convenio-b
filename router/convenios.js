@@ -5,17 +5,17 @@ const { draft, ActualizarDraft, obtenerConvenio, obtenerConvenios, convenioEmpre
 
 
 routerConvenios.get("/", authMiddleware([ROLES.Gestor, ROLES.Organizacion, ROLES.Revisor, ROLES.Director_Unidad, ROLES.Coordinador, ROLES.Director_General]), obtenerConvenios);
-routerConvenios.post('/draft', draft);
-routerConvenios.patch('/draft', ActualizarDraft);
-routerConvenios.get('/draft/:numeroConvenio', obtenerConvenio);
+routerConvenios.post('/draft', authMiddleware(), draft);
+routerConvenios.patch('/draft', authMiddleware(), ActualizarDraft);
+routerConvenios.get('/draft/:numeroConvenio', authMiddleware(), obtenerConvenio);
 routerConvenios.post('/empresa', authMiddleware([ROLES.Gestor, ROLES.Organizacion, ROLES.Revisor, ROLES.Coordinador]), convenioEmpresas);
 routerConvenios.post('/dependencia', authMiddleware([ROLES.Gestor, ROLES.Organizacion, ROLES.Revisor, ROLES.Coordinador]), convenioDependencia);
 routerConvenios.post('/persona', authMiddleware([ROLES.Gestor, ROLES.Organizacion, ROLES.Revisor, ROLES.Coordinador]), convenioPersona);
-routerConvenios.post('/pdf', generarPdf);
-routerConvenios.post('/enviar-revision', enviarARevision);
-routerConvenios.post('/validar', validarConvenio);
-routerConvenios.post('/validar-coordinador', validarCoordinador);
-routerConvenios.post('/requiere-ajuste', requiereAjuste);
-routerConvenios.post('/solicitar-correccion', solicitarCorreccion);
+routerConvenios.post('/pdf', authMiddleware(), generarPdf);
+routerConvenios.post('/enviar-revision', authMiddleware(), enviarARevision);
+routerConvenios.post('/validar', authMiddleware(), validarConvenio);
+routerConvenios.post('/validar-coordinador', authMiddleware(), validarCoordinador);
+routerConvenios.post('/requiere-ajuste', authMiddleware(), requiereAjuste);
+routerConvenios.post('/solicitar-correccion', authMiddleware(), solicitarCorreccion);
 
 module.exports = (app) => app.use('/convenios', routerConvenios);

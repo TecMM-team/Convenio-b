@@ -145,3 +145,4 @@ dist
 .admin.pub
 
 *.key
+db.sql

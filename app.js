@@ -3,6 +3,7 @@ const dotenv = require("dotenv");
 const http = require("http");
 const https = require("https");
 const fs = require("fs");
+const path = require("path");
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const cors = require('cors');
@@ -13,11 +14,12 @@ const routerUnidades = require("./router/unidades");
 const routerCuentas = require("./router/cuentas");
 const routerConvenios = require("./router/convenios");
 const routerLocacion = require("./router/locacion");
-const routerOrganizacion = require("./router/organizaciones");
+const routerOrganizacion = require("./router/Organizaciones");
 const routerNotificaciones = require("./router/notificaciones");
 const routerMedia = require("./router/media");
 
 dotenv.config();
+const jwtPublicKey = fs.readFileSync(path.join(__dirname, "helpers/admin.key"), "utf8");
 
 const app = express();
 app.use(express.json());
@@ -60,7 +62,9 @@ const configureSocketIO = (serverInstance) => {
             return next(new Error("No autorizado: Token no proporcionado"));
         }
         try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const decoded = jwt.verify(token, jwtPublicKey, {
+                algorithms: ["RS256"],
+            });
             socket.user = decoded; 
             next();
         } catch (err) {
@@ -69,8 +73,8 @@ const configureSocketIO = (serverInstance) => {
     });
 
     io.on('connection', (socket) => {
-        console.log(`Usuario conectado al Socket: ${socket.user.cuenta_id}`);
-        const cuenta_id = socket.user.cuenta_id; 
+        console.log(`Usuario conectado al Socket: ${socket.user.id_Cuenta}`);
+        const cuenta_id = socket.user.id_Cuenta; 
         if (cuenta_id) {
             socket.join(`cuenta_${cuenta_id}`);
             console.log(`Usuario unido a la sala: cuenta_${cuenta_id}`);

@@ -1,6 +1,8 @@
 const db = require("../config/mysql");
 const mammoth = require('mammoth');
 
+const normalizeRfc = (value) => (value || "").trim().toUpperCase();
+
 const registrarOrganizacion = async (req, res) => {
     const con = await db.getConnection();
     const {
@@ -31,14 +33,13 @@ const registrarOrganizacion = async (req, res) => {
     } = req.body
     try {
         console.log('Request body recibido:', req.body);
-        
-        //validar RFC
-        const [validacion] = await con.query(
-            "SELECT COUNT(*) AS res FROM Organizaciones WHERE rfc = ?",
-            [rfc]
-        );
-        if(validacion[0].res > 0){
-            return res.status(400).json({ok: false, msg: "RFC registrado previamente"});
+        const rfcNormalizado = normalizeRfc(rfc);
+
+        if (rfcNormalizado.length > 15) {
+            return res.status(400).json({
+                ok: false,
+                msg: "El RFC excede la longitud permitida. Verifica que no estés capturando CURP.",
+            });
         }
 
         const [formulario] = await con.query(
@@ -46,7 +47,7 @@ const registrarOrganizacion = async (req, res) => {
             numero_Notaria, notaria_Estado, notaria_Municipio, actividades, domicilio_Calle, domicilio_Estado, domicilio_Municipio, domicilio_CP, contacto_Telefono, 
             contacto_Email, oficio_Nombramiento, fecha_Nombramiento, ine_Representante, acta_constitutiva, tipo)
             VALUES(?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [rfc, nombre_Legal, nombre_Comercial, nombre_Titular, puesto_Titular, numero_Escritura, nombre_Notario, numero_Notaria, notaria_Estado, notaria_Municipio,
+            [rfcNormalizado, nombre_Legal, nombre_Comercial, nombre_Titular, puesto_Titular, numero_Escritura, nombre_Notario, numero_Notaria, notaria_Estado, notaria_Municipio,
             actividades, domicilio_Calle, domicilio_Estado, domicilio_Municipio, domicilio_CP, contacto_Telefono, contacto_Email, oficio_Nombramiento, fecha_Nombramiento,
             ine_Representante, acta_constitutiva, tipo]
         );
@@ -128,6 +129,15 @@ const actualizarOrganizacion = async (req, res) => {
     } = req.body;
 
     try {
+        const rfcNormalizado = normalizeRfc(rfc);
+
+        if (rfcNormalizado.length > 15) {
+            return res.status(400).json({
+                ok: false,
+                msg: "El RFC excede la longitud permitida. Verifica que no estés capturando CURP.",
+            });
+        }
+
         // Verificar que existe la organización
         const [existingOrg] = await con.query(
             "SELECT * FROM Organizaciones WHERE id_Organizacion = ?",
@@ -149,7 +159,7 @@ const actualizarOrganizacion = async (req, res) => {
             oficio_Nombramiento = ?, fecha_Nombramiento = ?, ine_Representante = ?, 
             acta_constitutiva = ?, tipo = ?
             WHERE id_Organizacion = ?`,
-            [rfc, nombre_Legal, nombre_Comercial, nombre_Titular, puesto_Titular, 
+            [rfcNormalizado, nombre_Legal, nombre_Comercial, nombre_Titular, puesto_Titular, 
              numero_Escritura, nombre_Notario, numero_Notaria, notaria_Estado, notaria_Municipio,
              actividades, domicilio_Calle, domicilio_Estado, domicilio_Municipio, 
              domicilio_CP, contacto_Telefono, contacto_Email, oficio_Nombramiento, 
